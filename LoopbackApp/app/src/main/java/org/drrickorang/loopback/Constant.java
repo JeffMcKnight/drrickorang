@@ -57,7 +57,7 @@ public class Constant {
     // Loopback on Java thread test audio tone constants
     public static final int LOOPBACK_SAMPLE_FRAMES = 300;
     public static final double LOOPBACK_AMPLITUDE = 0.95;
-    public static final int LOOPBACK_FREQUENCY = 4000;
+    public static final int LOOPBACK_FREQUENCY = 19 * 1000;
 
     // Settings Activity and ADB constants
     public static final int SAMPLING_RATE_MAX = 48000;

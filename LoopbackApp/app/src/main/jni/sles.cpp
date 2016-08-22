@@ -94,6 +94,12 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
         assert(pSles->rxRear <= pSles->rxBufCount);
         assert(pSles->rxFront != pSles->rxRear);
         char *buffer = pSles->rxBuffers[pSles->rxFront]; //pSles->rxBuffers stores the data recorded
+#ifdef __cplusplus
+        float *floatBuffer;
+//        SuperpoweredCharToFloat((signed char *) buffer, floatBuffer, pSles->bufSizeInFrames);
+//        filter->process(buffer, buffer, pSles->bufSizeInBytes);
+//        filter->process(stereoBuffer, stereoBuffer, numberOfSamples);
+#endif
 
 
         // Remove buffer from record queue

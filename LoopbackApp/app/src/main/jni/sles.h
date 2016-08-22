@@ -29,6 +29,8 @@
 
 
 #ifdef __cplusplus
+#include <SuperpoweredSimple.h>
+#include <SuperpoweredFilter.h>
 extern "C" {
 #endif
 #include <audio_utils/fifo.h>
@@ -120,6 +122,10 @@ enum {
     TEST_TYPE_LATENCY = 222,
     TEST_TYPE_BUFFER_PERIOD = 223
 } SLES_STATUS_ENUM;
+
+#ifdef __cplusplus
+SuperpoweredFilter *filter;
+#endif
 
 int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSource,
              int testType, double frequency1, char* byteBufferPtr, int byteBufferLength,
