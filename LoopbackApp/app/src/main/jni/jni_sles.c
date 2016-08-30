@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
+#include <stddef.h>
 #include <android/log.h>
 #include "sles.h"
 #include "jni_sles.h"
 #include <stdio.h>
-#include <stddef.h>
 
 
 JNIEXPORT jlong JNICALL Java_org_drrickorang_loopback_NativeAudioThread_slesInit

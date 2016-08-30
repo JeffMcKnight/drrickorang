@@ -57,8 +57,24 @@ int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSourc
         }
     }
 
+    /** Set up lowpass filter */
+//    filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Lowpass, samplingRate);
+//    filter->setResonantParameters(200.0f, 0.2f);
+
+    /** Set up highpass filter */
+    filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Highpass, samplingRate);
+    filter->setResonantParameters(16.0f*1000.0f, 0.2f);
+
+    /** Set up bandpass filter with a bandwidth of 0.1 octaves */
+//    filter = new SuperpoweredFilter(SuperpoweredFilter_Bandlimited_Bandpass, samplingRate);
+//    float filterWidthInOctaves = 0.1f;
+//    filter->setBandlimitedParameters(19.0f * 1000.0f, filterWidthInOctaves);
+
+    filter->enable(true);
+
     return status;
 }
+
 int slesDestroy(sles_data ** ppSles) {
     int status = SLES_FAIL;
     if (ppSles != NULL) {
@@ -94,11 +110,32 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
         assert(pSles->rxRear <= pSles->rxBufCount);
         assert(pSles->rxFront != pSles->rxRear);
         char *buffer = pSles->rxBuffers[pSles->rxFront]; //pSles->rxBuffers stores the data recorded
+        SLES_PRINTF("recorderCallback()\n -- rxFront: %d\n -- rxRear: %d\n -- &rxFront: %d\n -- &rxRear:  %d\n -- bufSizeInFrames: %d\n -- channels: %d\n -- sizeof(*buffer): %d\n -- sizeof(buffer): %d",
+                    pSles->rxFront,
+                    pSles->rxRear,
+                    &(pSles->rxFront),
+                    &(pSles->rxRear),
+                    pSles->bufSizeInFrames,
+                    pSles->channels,
+                    sizeof(*buffer),
+                    sizeof(buffer)
+        );
 #ifdef __cplusplus
-        float *floatBuffer;
-//        SuperpoweredCharToFloat((signed char *) buffer, floatBuffer, pSles->bufSizeInFrames);
-//        filter->process(buffer, buffer, pSles->bufSizeInBytes);
-//        filter->process(stereoBuffer, stereoBuffer, numberOfSamples);
+        /** Filter the mic input to prevent runaway feedback */
+        // TODO: do this without using so many buffer resources
+        float* floatBuffer = new float[pSles->bufSizeInFrames];
+        SuperpoweredShortIntToFloat((short int*) buffer, floatBuffer, pSles->bufSizeInFrames, pSles->channels);
+        float* stereoBuffer = new float[2 * pSles->bufSizeInFrames];
+        SuperpoweredInterleave(floatBuffer, floatBuffer, stereoBuffer, pSles->bufSizeInFrames);
+        filter->process(stereoBuffer, stereoBuffer, pSles->bufSizeInFrames);
+        float *right = new float[pSles->bufSizeInFrames];
+        float *left = new float[pSles->bufSizeInFrames];
+        SuperpoweredDeInterleave(stereoBuffer, left, right, pSles->bufSizeInFrames);
+        SuperpoweredFloatToShortInt(left, (short *) buffer, pSles->bufSizeInFrames, pSles->channels);
+        delete[] left;
+        delete[] right;
+        delete[] floatBuffer;
+        delete[] stereoBuffer;
 #endif
 
 
@@ -819,7 +856,7 @@ int slesCreateServer(sles_data *pSles, int samplingRate, int frameCount, int mic
         status = SLES_SUCCESS;
         cleanup:
 
-        SLES_PRINTF("Finished initialization with status: %d", status);
+        SLES_PRINTF("Finished initialization with status: %d\n -- channels: %d \n -- bufSizeInFrames: %d \n -- bufSizeInBytes: %d", status, pSles->channels, pSles->bufSizeInFrames, pSles->bufSizeInBytes);
 
         int xx = 1;
 
