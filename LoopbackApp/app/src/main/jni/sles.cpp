@@ -54,7 +54,6 @@ int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSourc
                                       frequency1, byteBufferPtr, byteBufferLength, loopbackTone,
                                       maxRecordedLateCallbacks, captureHolder, jvm);
             SLES_PRINTF("slesCreateServer =%d", status);
-            pSles->volume = 1.0f;
         }
     }
 
@@ -557,6 +556,7 @@ int slesCreateServer(sles_data *pSles, int samplingRate, int frameCount, int mic
         //        SLBufferQueueItf playerBufferQueue;
 
         // default values
+        pSles->volume = 1.0f;
         pSles->rxBufCount = 1;     // -r#
         pSles->txBufCount = 1;     // -t#
         pSles->bufSizeInFrames = frameCount;//240;  // -f#
@@ -596,7 +596,7 @@ int slesCreateServer(sles_data *pSles, int samplingRate, int frameCount, int mic
         pSles->freeBuffers = (char **) calloc(pSles->freeBufCount + 1, sizeof(char *));
         unsigned j;
         for (j = 0; j < pSles->freeBufCount; ++j) {
-            pSles->freeBuffers[j] = (char *) malloc(pSles->bufSizeInBytes);
+            pSles->freeBuffers[j] = (char *) calloc(pSles->bufSizeInBytes, sizeof(char));
         }
         pSles->freeFront = 0;
         pSles->freeRear = pSles->freeBufCount;
@@ -779,9 +779,6 @@ int slesCreateServer(sles_data *pSles, int samplingRate, int frameCount, int mic
             ASSERT_EQ(SL_RESULT_SUCCESS, result);
         }
 
-        result = (*playerPlay)->SetPlayState(playerPlay, SL_PLAYSTATE_PLAYING);
-        ASSERT_EQ(SL_RESULT_SUCCESS, result);
-
         // Create an audio recorder with microphone device source and buffer queue sink.
         // The buffer queue as sink is an Android-specific extension.
         SLDataLocator_IODevice locator_iodevice;
@@ -877,11 +874,13 @@ int slesCreateServer(sles_data *pSles, int samplingRate, int frameCount, int mic
             ASSERT_EQ(SL_RESULT_SUCCESS, result);
         }
 
-        // Kick off the recorder
+        // Start recording
         result = (*recorderRecord)->SetRecordState(recorderRecord, SL_RECORDSTATE_RECORDING);
         ASSERT_EQ(SL_RESULT_SUCCESS, result);
 
-
+        // Start playback
+        result = (*playerPlay)->SetPlayState(playerPlay, SL_PLAYSTATE_PLAYING);
+        ASSERT_EQ(SL_RESULT_SUCCESS, result);
 
         // Tear down the objects and exit
         status = SLES_SUCCESS;
