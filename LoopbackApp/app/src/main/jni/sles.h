@@ -28,6 +28,11 @@
 #define SLES_PRINTF(...)  __android_log_print(ANDROID_LOG_INFO, "sles_jni", __VA_ARGS__);
 
 
+// FILTER_FREQUENCY_HZ should match Constant.LOOPBACK_FREQUENCY
+static const float FILTER_FREQUENCY_HZ = 19.0f*1000.0f;
+// FILTER_RESONANCE chosen to make feedback fairly stable
+static const float FILTER_RESONANCE = 1.0f;
+
 #ifdef __cplusplus
 #include <SuperpoweredSimple.h>
 #include <SuperpoweredFilter.h>
@@ -100,6 +105,7 @@ typedef struct {
     int count;
     char* byteBufferPtr;
     int byteBufferLength;
+    float volume;
 
     short* loopbackTone;
 

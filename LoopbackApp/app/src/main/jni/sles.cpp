@@ -54,6 +54,7 @@ int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSourc
                                       frequency1, byteBufferPtr, byteBufferLength, loopbackTone,
                                       maxRecordedLateCallbacks, captureHolder, jvm);
             SLES_PRINTF("slesCreateServer =%d", status);
+            pSles->volume = 1.0f;
         }
     }
 
@@ -63,7 +64,7 @@ int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSourc
 
     /** Set up highpass filter */
     filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Highpass, samplingRate);
-    filter->setResonantParameters(16.0f*1000.0f, 0.2f);
+    filter->setResonantParameters(FILTER_FREQUENCY_HZ, FILTER_RESONANCE);
 
     /** Set up bandpass filter with a bandwidth of 0.1 octaves */
 //    filter = new SuperpoweredFilter(SuperpoweredFilter_Bandlimited_Bandpass, samplingRate);
@@ -110,28 +111,58 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
         assert(pSles->rxRear <= pSles->rxBufCount);
         assert(pSles->rxFront != pSles->rxRear);
         char *buffer = pSles->rxBuffers[pSles->rxFront]; //pSles->rxBuffers stores the data recorded
-        SLES_PRINTF("recorderCallback()\n -- rxFront: %d\n -- rxRear: %d\n -- &rxFront: %d\n -- &rxRear:  %d\n -- bufSizeInFrames: %d\n -- channels: %d\n -- sizeof(*buffer): %d\n -- sizeof(buffer): %d",
-                    pSles->rxFront,
-                    pSles->rxRear,
-                    &(pSles->rxFront),
-                    &(pSles->rxRear),
-                    pSles->bufSizeInFrames,
-                    pSles->channels,
-                    sizeof(*buffer),
-                    sizeof(buffer)
-        );
+//        SLES_PRINTF("recorderCallback()\n -- rxFront: %d\n -- rxRear: %d\n -- &rxFront: %d\n -- &rxRear:  %d\n -- bufSizeInFrames: %d\n -- channels: %d\n -- sizeof(*buffer): %d\n -- sizeof(buffer): %d",
+//                    pSles->rxFront,
+//                    pSles->rxRear,
+//                    &(pSles->rxFront),
+//                    &(pSles->rxRear),
+//                    pSles->bufSizeInFrames,
+//                    pSles->channels,
+//                    sizeof(*buffer),
+//                    sizeof(buffer)
+//        );
 #ifdef __cplusplus
         /** Filter the mic input to prevent runaway feedback */
         // TODO: do this without using so many buffer resources
+
+        // Convert 16bit linear PCM to floating point linear PCM
         float* floatBuffer = new float[pSles->bufSizeInFrames];
         SuperpoweredShortIntToFloat((short int*) buffer, floatBuffer, pSles->bufSizeInFrames, pSles->channels);
+
+        // Create stereo buffer because SuperpoweredFilter can only process stereo frames
         float* stereoBuffer = new float[2 * pSles->bufSizeInFrames];
         SuperpoweredInterleave(floatBuffer, floatBuffer, stereoBuffer, pSles->bufSizeInFrames);
+
+        // Do the actual EQ filtering
         filter->process(stereoBuffer, stereoBuffer, pSles->bufSizeInFrames);
+
+        // Quick and dirty Gain Limiter --
+        float peak = SuperpoweredPeak(stereoBuffer, 2 * pSles->bufSizeInFrames);
+        // targetPeak should always be >0.0f so we never try to divide by 0
+        float targetPeak = 1.0f;
+        if (peak > targetPeak){
+            float targetVolume = targetPeak / peak;
+            if (pSles->volume > targetVolume){
+                pSles->volume = targetVolume;
+            }
+        }
+        SuperpoweredVolume(stereoBuffer, stereoBuffer, pSles->volume, pSles->volume, pSles->bufSizeInFrames);
+//        SLES_PRINTF("recorderCallback() "
+//                            " --- peak: %.2f"
+//                            " --- pSles->volume: %.2f",
+//                    peak,
+//                    pSles->volume
+//        );
+
+        // Deinterleave back to a mono audio frame
         float *right = new float[pSles->bufSizeInFrames];
         float *left = new float[pSles->bufSizeInFrames];
         SuperpoweredDeInterleave(stereoBuffer, left, right, pSles->bufSizeInFrames);
+
+        // Convert floating point linear PCM back to 16bit linear PCM
         SuperpoweredFloatToShortInt(left, (short *) buffer, pSles->bufSizeInFrames, pSles->channels);
+
+        // Release audio frame memory resources
         delete[] left;
         delete[] right;
         delete[] floatBuffer;
