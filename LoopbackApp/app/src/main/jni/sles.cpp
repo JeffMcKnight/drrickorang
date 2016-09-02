@@ -38,6 +38,24 @@ int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSourc
              const struct JNIInvokeInterface* *jvm) {
     int status = SLES_FAIL;
     if (ppSles != NULL) {
+        /** Set up lowpass filter */
+//    filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Lowpass, samplingRate);
+//    filter->setResonantParameters(200.0f, 0.2f);
+
+        SLES_PRINTF("slesInit"
+                            " -- samplingRate: %d"
+        ,samplingRate);
+        /** Set up highpass filter */
+        filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Highpass, samplingRate);
+        filter->setResonantParameters(FILTER_FREQUENCY_HZ, FILTER_RESONANCE);
+
+        /** Set up bandpass filter with a bandwidth of 0.1 octaves */
+//    filter = new SuperpoweredFilter(SuperpoweredFilter_Bandlimited_Bandpass, samplingRate);
+//    float filterWidthInOctaves = 0.1f;
+//    filter->setBandlimitedParameters(19.0f * 1000.0f, filterWidthInOctaves);
+
+        filter->enable(true);
+
         sles_data * pSles = (sles_data*) malloc(sizeof(sles_data));
 
         memset(pSles, 0, sizeof(sles_data));
@@ -57,20 +75,6 @@ int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSourc
         }
     }
 
-    /** Set up lowpass filter */
-//    filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Lowpass, samplingRate);
-//    filter->setResonantParameters(200.0f, 0.2f);
-
-    /** Set up highpass filter */
-    filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Highpass, samplingRate);
-    filter->setResonantParameters(FILTER_FREQUENCY_HZ, FILTER_RESONANCE);
-
-    /** Set up bandpass filter with a bandwidth of 0.1 octaves */
-//    filter = new SuperpoweredFilter(SuperpoweredFilter_Bandlimited_Bandpass, samplingRate);
-//    float filterWidthInOctaves = 0.1f;
-//    filter->setBandlimitedParameters(19.0f * 1000.0f, filterWidthInOctaves);
-
-    filter->enable(true);
 
     return status;
 }
@@ -110,16 +114,6 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
         assert(pSles->rxRear <= pSles->rxBufCount);
         assert(pSles->rxFront != pSles->rxRear);
         char *buffer = pSles->rxBuffers[pSles->rxFront]; //pSles->rxBuffers stores the data recorded
-//        SLES_PRINTF("recorderCallback()\n -- rxFront: %d\n -- rxRear: %d\n -- &rxFront: %d\n -- &rxRear:  %d\n -- bufSizeInFrames: %d\n -- channels: %d\n -- sizeof(*buffer): %d\n -- sizeof(buffer): %d",
-//                    pSles->rxFront,
-//                    pSles->rxRear,
-//                    &(pSles->rxFront),
-//                    &(pSles->rxRear),
-//                    pSles->bufSizeInFrames,
-//                    pSles->channels,
-//                    sizeof(*buffer),
-//                    sizeof(buffer)
-//        );
 #ifdef __cplusplus
         /** Filter the mic input to prevent runaway feedback */
         // TODO: do this without using so many buffer resources
