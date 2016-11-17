@@ -28,14 +28,9 @@
 #define SLES_PRINTF(...)  __android_log_print(ANDROID_LOG_INFO, "sles_jni", __VA_ARGS__);
 
 
-// FILTER_FREQUENCY_HZ should match Constant.LOOPBACK_FREQUENCY
-static const float FILTER_FREQUENCY_HZ = 19.0f*1000.0f;
-// FILTER_RESONANCE chosen to make feedback fairly stable
-static const float FILTER_RESONANCE = 1.0f;
-
 #ifdef __cplusplus
-#include <SuperpoweredSimple.h>
-#include <SuperpoweredFilter.h>
+#include "PulseEnhancer.h"
+
 extern "C" {
 #endif
 #include <audio_utils/fifo.h>
@@ -139,7 +134,7 @@ enum {
 } SLES_STATUS_ENUM;
 
 #ifdef __cplusplus
-SuperpoweredFilter *filter;
+    PulseEnhancer *pulseEnhancer;
 #endif
 
 int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSource,
