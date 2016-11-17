@@ -37,8 +37,7 @@ int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSourc
              short* loopbackTone, int maxRecordedLateCallbacks, int ignoreFirstFrames) {
     int status = SLES_FAIL;
     if (ppSles != NULL) {
-        pulseEnhancer = new PulseEnhancer();
-        pulseEnhancer->createFilter(samplingRate);
+        pulseEnhancer = PulseEnhancer::create(samplingRate);
 
         sles_data * pSles = (sles_data*) malloc(sizeof(sles_data));
 
@@ -100,7 +99,6 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
         // Filter and otherwise boost the injected frequency pulse
         char *buffer = pulseEnhancer->processForOpenAir(pSles->bufSizeInFrames,
                                                         pSles->channels,
-                                                        &(pSles->volume),
                                                         pSles->rxBuffers[pSles->rxFront]);
 
         // Remove buffer from record queue

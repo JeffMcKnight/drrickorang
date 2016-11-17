@@ -5,15 +5,39 @@
 #include "PulseEnhancer.h"
 
 /**
+ * Constructor to initialize fields and constants with default values.
+ * <b>Do not directly use this method to create an instance of {@link PulseEnhancer}.  Use the factory
+ * method instead. </b>
+ * FILTER_FREQUENCY_HZ should match Constant.LOOPBACK_FREQUENCY
+ * FILTER_RESONANCE chosen to make feedback fairly stable
+ */
+PulseEnhancer::PulseEnhancer() : volume(1.0F),
+                                 FILTER_FREQUENCY_HZ(19.0f * 1000.0F),
+                                 FILTER_RESONANCE(1.0f),
+                                 TARGET_PEAK(1.0f) {
+}
+
+/**
+ * Factory method. This is the preferred method to create instances of {@link PulseEnhancer}.
+ * It creates the object and also sets up the audio {@link #filter}
+ */
+PulseEnhancer *PulseEnhancer::create(int samplingRate) {
+    PulseEnhancer *enhancer = new PulseEnhancer();
+    enhancer->createFilter(static_cast<unsigned int>(samplingRate));
+    return enhancer;
+}
+/**
  * Process the raw record buffer so we can do the latency measurement test in open air without the
  * loopback dongle.
  */
-char* PulseEnhancer::processForOpenAir(SLuint32 bufSizeInFrames, SLuint32 channelCount, float *volume, char *recordBuffer) {
+char *PulseEnhancer::processForOpenAir(SLuint32 bufSizeInFrames,
+                                       SLuint32 channelCount,
+                                       char *recordBuffer) {
     // Convert the raw buffer to stereo floating point;  pSles->rxBuffers stores the data recorded
     float *stereoBuffer = monoShortIntToStereoFloat(recordBuffer, bufSizeInFrames, channelCount);
     //  Filter the mic input to get a cleaner pulse and reduce runaway feedback (not exactly Larsen effect, but similar)
     filter->process(stereoBuffer, stereoBuffer, bufSizeInFrames);
-    enhancePulse(stereoBuffer, bufSizeInFrames, volume);
+    enhancePulse(stereoBuffer, bufSizeInFrames);
     // Convert buffer back to 16 bit mono
     char *buffer = stereoFloatToMonoShortInt(stereoBuffer, bufSizeInFrames, channelCount);
     delete[] stereoBuffer;
@@ -23,18 +47,17 @@ char* PulseEnhancer::processForOpenAir(SLuint32 bufSizeInFrames, SLuint32 channe
 /**
  * Boost the pulse and attenuate/mute ambient noise.
  */
-void PulseEnhancer::enhancePulse(float *stereoBuffer, SLuint32 bufSizeInFrames, float *volume) {
+void PulseEnhancer::enhancePulse(float *stereoBuffer, SLuint32 bufSizeInFrames) {
     // Quick and dirty Gain Limiter --
     float peak = SuperpoweredPeak(stereoBuffer, 2 * bufSizeInFrames);
-    // targetPeak should always be >0.0f so we never try to divide by 0
-    float targetPeak = 1.0f;
-    if (peak > targetPeak){
-        float targetVolume = targetPeak / peak;
-        if (*volume > targetVolume){
-            *volume = targetVolume;
+    // TARGET_PEAK should always be >0.0f so we never try to divide by 0
+    if (peak > TARGET_PEAK){
+        float targetVolume = TARGET_PEAK / peak;
+        if (volume > targetVolume){
+            volume = targetVolume;
         }
     }
-    SuperpoweredVolume(stereoBuffer, stereoBuffer, *volume, *volume, bufSizeInFrames);
+    SuperpoweredVolume(stereoBuffer, stereoBuffer, volume, volume, bufSizeInFrames);
 //        SLES_PRINTF("recorderCallback() "
 //                            " --- peak: %.2f"
 //                            " --- pSles->volume: %.2f",
@@ -47,7 +70,9 @@ void PulseEnhancer::enhancePulse(float *stereoBuffer, SLuint32 bufSizeInFrames, 
  * Convert stereo floating point buffer back to mono 16 bit buffer which matches the format of the
  * recording callback.
  */
-char* PulseEnhancer::stereoFloatToMonoShortInt(float *stereoBuffer, SLuint32 bufSizeInFrames, SLuint32 channelCount) {
+char *PulseEnhancer::stereoFloatToMonoShortInt(float *stereoBuffer,
+                                               SLuint32 bufSizeInFrames,
+                                               SLuint32 channelCount) {
     void *buffer = new float[bufSizeInFrames];
     // Deinterleave back to a mono audio frame
     float *right = new float[bufSizeInFrames];
@@ -66,7 +91,9 @@ char* PulseEnhancer::stereoFloatToMonoShortInt(float *stereoBuffer, SLuint32 buf
  * methods expect stereo float frames
  * TODO: do this without using so many buffer resources
 */
-float* PulseEnhancer::monoShortIntToStereoFloat(const char *monoShortIntBuffer,  SLuint32 bufSizeInFrames, SLuint32 channelCount) {
+float *PulseEnhancer::monoShortIntToStereoFloat(const char *monoShortIntBuffer,
+                                                SLuint32 bufSizeInFrames,
+                                                SLuint32 channelCount) {
     float *stereoFloatBuffer = new float[2 * bufSizeInFrames];
     float *monoFloatBuffer = new float[bufSizeInFrames];
     // Convert mono 16bit buffer to mono floating point buffer
@@ -83,7 +110,8 @@ float* PulseEnhancer::monoShortIntToStereoFloat(const char *monoShortIntBuffer, 
 /**
  * Create the 19kHz high pass resonant filter
  */
-SuperpoweredFilter * PulseEnhancer::createFilter(int samplingRate) {/** Set up lowpass filter */
+void PulseEnhancer::createFilter(unsigned int samplingRate) {
+/** Set up lowpass filter */
 //    filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Lowpass, samplingRate);
 //    filter->setResonantParameters(200.0f, 0.2f);
 
@@ -100,5 +128,4 @@ SuperpoweredFilter * PulseEnhancer::createFilter(int samplingRate) {/** Set up l
 //    filter->setBandlimitedParameters(19.0f * 1000.0f, filterWidthInOctaves);
 
     filter->enable(true);
-    return filter;
 }
