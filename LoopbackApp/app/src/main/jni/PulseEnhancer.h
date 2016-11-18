@@ -5,6 +5,8 @@
 #ifndef LOOPBACKAPP_PULSE_ENHANCER_H
 #define LOOPBACKAPP_PULSE_ENHANCER_H
 
+static const int WARMUP_PERIOD_MSEC = 10;
+
 #include <SLES/OpenSLES.h>
 #include <SuperpoweredFilter.h>
 #include <SuperpoweredSimple.h>
@@ -38,6 +40,8 @@ private:
                                      SLuint32 channelCount);
     void locatePulse(float *rawBuffer, float *filteredBuffer, int bufSizeInFrames);
     int bufferSizeInMsec(int bufSizeInFrames) const;
+
+    void mute(float *audioBuffer, unsigned int numberOfSamples);
 };
 
 

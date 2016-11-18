@@ -41,11 +41,16 @@ char *PulseEnhancer::processForOpenAir(SLuint32 bufSizeInFrames,
                                        char *recordBuffer) {
     // Convert the raw buffer to stereo floating point;  pSles->rxBuffers stores the data recorded
     float *rawStereoBuffer = monoShortIntToStereoFloat(recordBuffer, bufSizeInFrames, channelCount);
-    float *filteredStereoBuffer = new float[2*bufSizeInFrames];
+    unsigned int stereoBufferSizeInSamples = 2 * bufSizeInFrames;
+    float *filteredStereoBuffer = new float[stereoBufferSizeInSamples];
     //  Filter the mic input to get a cleaner pulse and reduce runaway feedback (not exactly Larsen effect, but similar)
     mFilter->process(rawStereoBuffer, filteredStereoBuffer, bufSizeInFrames);
     locatePulse(rawStereoBuffer, filteredStereoBuffer, bufSizeInFrames);
     enhancePulse(filteredStereoBuffer, bufSizeInFrames);
+    if (mTimeElapsed < WARMUP_PERIOD_MSEC){
+        // Seems like size should be stereoBufferSizeInSamples but that causes intermittent crash
+        mute(filteredStereoBuffer, bufSizeInFrames);
+    }
     // Convert buffer back to 16 bit mono
     char *buffer = stereoFloatToMonoShortInt(filteredStereoBuffer, bufSizeInFrames, channelCount);
     delete[] rawStereoBuffer;
@@ -150,7 +155,7 @@ void PulseEnhancer::locatePulse(float *rawBuffer, float *filteredBuffer, int buf
         filteredPeak = SuperpoweredPeak(filteredBuffer + (SAMPLES_STEREO_ONE_MSEC * i), SAMPLES_STEREO_ONE_MSEC);
         float filterGain = filteredPeak / rawPeak;
         if (filterGain<1.0f){
-            __android_log_print(ANDROID_LOG_VERBOSE, "PulseEnhancer", "Pulse detected --- time: %d -- rawPeak: %f -- filteredPeak: %f -- filteredPeak/rawPeak: %f", mTimeElapsed + i, rawPeak, filteredPeak, filterGain);
+//            __android_log_print(ANDROID_LOG_VERBOSE, "PulseEnhancer", "Pulse detected --- time: %d -- rawPeak: %f -- filteredPeak: %f -- filteredPeak/rawPeak: %f", mTimeElapsed + i, rawPeak, filteredPeak, filterGain);
         } else
         if (filterGain<8.0f){
             __android_log_print(ANDROID_LOG_DEBUG, "PulseEnhancer", "Pulse detected --- time: %d -- rawPeak: %f -- filteredPeak: %f -- filteredPeak/rawPeak: %f", mTimeElapsed + i, rawPeak, filteredPeak, filterGain);
@@ -166,5 +171,11 @@ int PulseEnhancer::bufferSizeInMsec(int bufSizeInFrames) const {
                      / SAMPLE_RATE;  // samples per second
     return chunkCount;
 }
+
+void PulseEnhancer::mute(float *audioBuffer, unsigned int numberOfSamples) {
+    SuperpoweredVolume(audioBuffer, audioBuffer, 0.0F, 0.0F, numberOfSamples);
+}
+
+
 
 
