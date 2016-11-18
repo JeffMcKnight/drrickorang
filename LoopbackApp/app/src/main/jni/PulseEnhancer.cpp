@@ -3,6 +3,7 @@
 //
 
 #include "PulseEnhancer.h"
+#include "../../../../../../../Shared/Library/Android/sdk/ndk-bundle/platforms/android-16/arch-x86/usr/include/android/log.h"
 
 /**
  * Constructor to initialize fields and constants with default values.
@@ -11,10 +12,15 @@
  * FILTER_FREQUENCY_HZ should match Constant.LOOPBACK_FREQUENCY
  * FILTER_RESONANCE chosen to make feedback fairly stable
  */
-PulseEnhancer::PulseEnhancer() : volume(1.0F),
-                                 FILTER_FREQUENCY_HZ(19.0f * 1000.0F),
-                                 FILTER_RESONANCE(1.0f),
-                                 TARGET_PEAK(1.0f) {
+PulseEnhancer::PulseEnhancer(int sampleRate) : SAMPLE_RATE(sampleRate),
+                                               SAMPLES_MONO_ONE_MSEC((unsigned int) (sampleRate / 1000)),
+                                               SAMPLES_STEREO_ONE_MSEC(2*SAMPLES_MONO_ONE_MSEC),
+                                               mVolume(1.0F),
+                                               mTimeElapsed(0),
+                                               FILTER_FREQUENCY_HZ(19.0f * 1000.0F),
+                                               FILTER_RESONANCE(2.0f),
+                                               TARGET_PEAK(1.0f) {
+    __android_log_print(ANDROID_LOG_INFO, "PulseEnhancer", "::create -- SAMPLE_RATE: %d -- SAMPLES_MONO_ONE_MSEC: %d -- SAMPLES_STEREO_ONE_MSEC: %d", SAMPLE_RATE, SAMPLES_MONO_ONE_MSEC, SAMPLES_STEREO_ONE_MSEC);
 }
 
 /**
@@ -22,7 +28,7 @@ PulseEnhancer::PulseEnhancer() : volume(1.0F),
  * It creates the object and also sets up the audio {@link #filter}
  */
 PulseEnhancer *PulseEnhancer::create(int samplingRate) {
-    PulseEnhancer *enhancer = new PulseEnhancer();
+    PulseEnhancer *enhancer = new PulseEnhancer(samplingRate);
     enhancer->createFilter(static_cast<unsigned int>(samplingRate));
     return enhancer;
 }
@@ -34,13 +40,17 @@ char *PulseEnhancer::processForOpenAir(SLuint32 bufSizeInFrames,
                                        SLuint32 channelCount,
                                        char *recordBuffer) {
     // Convert the raw buffer to stereo floating point;  pSles->rxBuffers stores the data recorded
-    float *stereoBuffer = monoShortIntToStereoFloat(recordBuffer, bufSizeInFrames, channelCount);
+    float *rawStereoBuffer = monoShortIntToStereoFloat(recordBuffer, bufSizeInFrames, channelCount);
+    float *filteredStereoBuffer = new float[2*bufSizeInFrames];
     //  Filter the mic input to get a cleaner pulse and reduce runaway feedback (not exactly Larsen effect, but similar)
-    filter->process(stereoBuffer, stereoBuffer, bufSizeInFrames);
-    enhancePulse(stereoBuffer, bufSizeInFrames);
+    mFilter->process(rawStereoBuffer, filteredStereoBuffer, bufSizeInFrames);
+    locatePulse(rawStereoBuffer, filteredStereoBuffer, bufSizeInFrames);
+    enhancePulse(filteredStereoBuffer, bufSizeInFrames);
     // Convert buffer back to 16 bit mono
-    char *buffer = stereoFloatToMonoShortInt(stereoBuffer, bufSizeInFrames, channelCount);
-    delete[] stereoBuffer;
+    char *buffer = stereoFloatToMonoShortInt(filteredStereoBuffer, bufSizeInFrames, channelCount);
+    delete[] rawStereoBuffer;
+    delete[] filteredStereoBuffer;
+    mTimeElapsed += bufferSizeInMsec(bufSizeInFrames);
     return buffer;
 }
 
@@ -53,11 +63,11 @@ void PulseEnhancer::enhancePulse(float *stereoBuffer, SLuint32 bufSizeInFrames) 
     // TARGET_PEAK should always be >0.0f so we never try to divide by 0
     if (peak > TARGET_PEAK){
         float targetVolume = TARGET_PEAK / peak;
-        if (volume > targetVolume){
-            volume = targetVolume;
+        if (mVolume > targetVolume){
+            mVolume = targetVolume;
         }
     }
-    SuperpoweredVolume(stereoBuffer, stereoBuffer, volume, volume, bufSizeInFrames);
+    SuperpoweredVolume(stereoBuffer, stereoBuffer, mVolume, mVolume, bufSizeInFrames);
 //        SLES_PRINTF("recorderCallback() "
 //                            " --- peak: %.2f"
 //                            " --- pSles->volume: %.2f",
@@ -119,13 +129,42 @@ void PulseEnhancer::createFilter(unsigned int samplingRate) {
 //                            " -- samplingRate: %d"
 //        ,samplingRate);
     /** Set up highpass filter */
-    filter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Highpass, samplingRate);
-    filter->setResonantParameters(FILTER_FREQUENCY_HZ, FILTER_RESONANCE);
+    mFilter = new SuperpoweredFilter(SuperpoweredFilter_Resonant_Highpass, samplingRate);
+    mFilter->setResonantParameters(FILTER_FREQUENCY_HZ, FILTER_RESONANCE);
 
     /** Set up bandpass filter with a bandwidth of 0.1 octaves */
 //    filter = new SuperpoweredFilter(SuperpoweredFilter_Bandlimited_Bandpass, samplingRate);
 //    float filterWidthInOctaves = 0.1f;
 //    filter->setBandlimitedParameters(19.0f * 1000.0f, filterWidthInOctaves);
 
-    filter->enable(true);
+    mFilter->enable(true);
 }
+
+void PulseEnhancer::locatePulse(float *rawBuffer, float *filteredBuffer, int bufSizeInFrames) {
+    int sizeInMsec = bufferSizeInMsec(bufSizeInFrames);
+    __android_log_print(ANDROID_LOG_DEBUG, "PulseEnhancer", "locatePulse() -- sizeInMsec: %d -- bufSizeInFrames: %d", sizeInMsec, bufSizeInFrames);
+    float rawPeak;
+    float filteredPeak;
+    for (int i=0; i < sizeInMsec; i++){
+        rawPeak = SuperpoweredPeak(rawBuffer + (SAMPLES_STEREO_ONE_MSEC * i), SAMPLES_STEREO_ONE_MSEC);
+        filteredPeak = SuperpoweredPeak(filteredBuffer + (SAMPLES_STEREO_ONE_MSEC * i), SAMPLES_STEREO_ONE_MSEC);
+        float filterGain = filteredPeak / rawPeak;
+        if (filterGain<1.0f){
+            __android_log_print(ANDROID_LOG_VERBOSE, "PulseEnhancer", "Pulse detected --- time: %d -- rawPeak: %f -- filteredPeak: %f -- filteredPeak/rawPeak: %f", mTimeElapsed + i, rawPeak, filteredPeak, filterGain);
+        } else
+        if (filterGain<8.0f){
+            __android_log_print(ANDROID_LOG_DEBUG, "PulseEnhancer", "Pulse detected --- time: %d -- rawPeak: %f -- filteredPeak: %f -- filteredPeak/rawPeak: %f", mTimeElapsed + i, rawPeak, filteredPeak, filterGain);
+        } else {
+            __android_log_print(ANDROID_LOG_INFO, "PulseEnhancer", "Pulse detected --- time: %d -- rawPeak: %f -- filteredPeak: %f -- filteredPeak/rawPeak: %f", mTimeElapsed + i, rawPeak, filteredPeak, filterGain);
+        }
+    }
+}
+
+int PulseEnhancer::bufferSizeInMsec(int bufSizeInFrames) const {
+    int chunkCount = bufSizeInFrames // frames
+                     * 1000 // msec per second
+                     / SAMPLE_RATE;  // samples per second
+    return chunkCount;
+}
+
+
