@@ -10,6 +10,7 @@ static const int WARMUP_PERIOD_MSEC = 10;
 #include <SLES/OpenSLES.h>
 #include <SuperpoweredFilter.h>
 #include <SuperpoweredSimple.h>
+#include "NoiseGate.h"
 
 
 class PulseEnhancer {
@@ -28,6 +29,7 @@ private:
     const int SAMPLE_RATE;
     int mTimeElapsed;
     float mVolume;
+    NoiseGate *mNoiseGate;
     SuperpoweredFilter *mFilter;
 
     void createFilter(unsigned int samplingRate);
@@ -40,7 +42,6 @@ private:
                                      SLuint32 channelCount);
     void locatePulse(float *rawBuffer, float *filteredBuffer, int bufSizeInFrames);
     int bufferSizeInMsec(int bufSizeInFrames) const;
-
     void mute(float *audioBuffer, unsigned int numberOfSamples);
 };
 
