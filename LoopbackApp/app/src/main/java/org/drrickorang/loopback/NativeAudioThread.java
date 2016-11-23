@@ -118,7 +118,7 @@ public class NativeAudioThread extends Thread {
     public native long  slesInit(int samplingRate, int frameCount, int micSource,
                                  int testType, double frequency1, ByteBuffer byteBuffer,
                                  short[] sincTone, int maxRecordedLateCallbacks,
-                                 int ignoreFirstFrames);
+                                 int ignoreFirstFrames, int injectedFrequencyHz);
     public native int   slesProcessNext(long sles_data, double[] samples, long offset);
     public native int   slesDestroy(long sles_data);
 
@@ -176,7 +176,7 @@ public class NativeAudioThread extends Thread {
                 mMinPlayerBufferSizeInBytes / Constant.BYTES_PER_FRAME, mMicSource, mTestType,
                 mFrequency1, mPipeByteBuffer.getByteBuffer(), loopbackTone,
                 mBufferTestDurationInSeconds * Constant.MAX_RECORDED_LATE_CALLBACKS_PER_SECOND,
-                mIgnoreFirstFrames);
+                mIgnoreFirstFrames, Constant.LOOPBACK_FREQUENCY);
         log(String.format("sles_data = 0x%X", sles_data));
 
         if (sles_data == 0) {

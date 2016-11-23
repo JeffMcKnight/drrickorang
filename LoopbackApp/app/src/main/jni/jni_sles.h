@@ -26,8 +26,12 @@ extern "C" {
 ////////////////////////
 ////SLE
 JNIEXPORT jlong JNICALL Java_org_drrickorang_loopback_NativeAudioThread_slesInit
-  (JNIEnv *, jobject, jint, jint, jint, jint, jdouble, jobject byteBuffer,
-   jshortArray loopbackTone, jint maxRecordedLateCallbacks, jint ignoreFirstFrames);
+        (JNIEnv *, jobject, jint, jint, jint,
+                                                                       jint, jdouble, jobject byteBuffer,
+                                                                       jshortArray loopbackTone,
+                                                                       jint maxRecordedLateCallbacks,
+                                                                       jint ignoreFirstFrames,
+                                                                       jint injectedFrequencyHz);
 
 JNIEXPORT jint JNICALL Java_org_drrickorang_loopback_NativeAudioThread_slesProcessNext
   (JNIEnv *, jobject, jlong, jdoubleArray, jlong);

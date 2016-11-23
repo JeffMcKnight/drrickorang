@@ -32,12 +32,12 @@
 #include <assert.h>
 #include <unistd.h>
 
-int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSource,
-             int testType, double frequency1, char* byteBufferPtr, int byteBufferLength,
-             short* loopbackTone, int maxRecordedLateCallbacks, int ignoreFirstFrames) {
+int slesInit(sles_data **ppSles, int samplingRate, int frameCount, int micSource, int testType,
+             double frequency1, char *byteBufferPtr, int byteBufferLength, short *loopbackTone,
+             int maxRecordedLateCallbacks, int ignoreFirstFrames, int injectedFrequencyHz) {
     int status = SLES_FAIL;
     if (ppSles != NULL) {
-        pulseEnhancer = PulseEnhancer::create(samplingRate);
+        pulseEnhancer = PulseEnhancer::create(samplingRate, injectedFrequencyHz);
 
         sles_data * pSles = (sles_data*) malloc(sizeof(sles_data));
 
@@ -97,9 +97,13 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
         assert(pSles->rxRear <= pSles->rxBufCount);
         assert(pSles->rxFront != pSles->rxRear);
         // Filter and otherwise boost the injected frequency pulse
-        char *buffer = pulseEnhancer->processForOpenAir(pSles->bufSizeInFrames,
-                                                        pSles->channels,
-                                                        pSles->rxBuffers[pSles->rxFront]);
+        char *buffer = pSles->rxBuffers[pSles->rxFront];
+        char *postProcessBuffer = new char[pSles->bufSizeInFrames * pSles->channels];
+        pulseEnhancer->processForOpenAir(buffer,
+                                         postProcessBuffer,
+                                         pSles->bufSizeInFrames,
+                                         pSles->channels);
+//        buffer = pSles->rxBuffers[pSles->rxFront];
 
         // Remove buffer from record queue
         if (++pSles->rxFront > pSles->rxBufCount) {
@@ -114,10 +118,10 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
                     framesToErase = pSles->bufSizeInFrames;
                 }
                 pSles->ignoreFirstFrames -= framesToErase;
-                memset(buffer, 0, framesToErase * pSles->channels * sizeof(short));
+                memset(postProcessBuffer, 0, framesToErase * pSles->channels * sizeof(short));
             }
 
-            ssize_t actual = audio_utils_fifo_write(&(pSles->fifo), buffer,
+            ssize_t actual = audio_utils_fifo_write(&(pSles->fifo), postProcessBuffer,
                     (size_t) pSles->bufSizeInFrames);
 
             if (actual != (ssize_t) pSles->bufSizeInFrames) {
@@ -128,7 +132,7 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
             // and it is unsafe to do I/O as it could block for unbounded time.
             // Flash filesystem is especially notorious for blocking.
             if (pSles->fifo2Buffer != NULL) {
-                actual = audio_utils_fifo_write(&(pSles->fifo2), buffer,
+                actual = audio_utils_fifo_write(&(pSles->fifo2), postProcessBuffer,
                         (size_t) pSles->bufSizeInFrames);
                 if (actual != (ssize_t) pSles->bufSizeInFrames) {
                     write(1, "?", 1);
@@ -136,7 +140,7 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
             }
         } else if (pSles->testType == TEST_TYPE_BUFFER_PERIOD) {
             if (pSles->fifo2Buffer != NULL) {
-                ssize_t actual = byteBuffer_write(pSles, buffer, (size_t) pSles->bufSizeInFrames);
+                ssize_t actual = byteBuffer_write(pSles, postProcessBuffer, (size_t) pSles->bufSizeInFrames);
 
                 //FIXME should log errors using other methods instead of printing to terminal
                 if (actual != (ssize_t) pSles->bufSizeInFrames) {
@@ -163,8 +167,8 @@ static void recorderCallback(SLAndroidSimpleBufferQueueItf caller __unused, void
         pSles->rxBuffers[pSles->rxRear] = buffer;
         pSles->rxRear = rxRearNext;
 
-
-
+        pSles->mIsRecorderStarted = true;
+        delete[] postProcessBuffer;
       //ee  SLES_PRINTF("r>");
 
     } //pSles not null
@@ -243,7 +247,8 @@ static void playerCallback(SLBufferQueueItf caller __unused, void *context) {
                 memset(buffer, 0, pSles->bufSizeInFrames * pSles->channels * sizeof(short));
             }
 
-            if (pSles->injectImpulse == -1) {   // here we inject pulse
+//            if (pSles->injectImpulse == -1) {   // here we inject pulse
+            if (pSles->injectImpulse == -1 && pSles->mIsRecorderStarted) {   // here we inject pulse
 
                 /*// Experimentally, a single frame impulse was insufficient to trigger feedback.
                 // Also a Nyquist frequency signal was also insufficient, probably because
@@ -477,6 +482,7 @@ int slesCreateServer(sles_data *pSles, int samplingRate, int frameCount, int mic
         pSles->freeBufCount = 0;   // calculated
         pSles->bufSizeInBytes = 0; // calculated
         pSles->injectImpulse = 300; // -i#i
+        pSles->mIsRecorderStarted = false;
         pSles->ignoreFirstFrames = ignoreFirstFrames;
 
         // Storage area for the buffer queues

@@ -113,6 +113,7 @@ typedef struct {
     callbackTimeStamps recorderTimeStamps;
     callbackTimeStamps playerTimeStamps;
     short expectedBufferPeriod;
+    bool mIsRecorderStarted;
 } sles_data;
 
 #define NANOS_PER_SECOND 1000000000
@@ -137,9 +138,9 @@ enum {
     PulseEnhancer *pulseEnhancer;
 #endif
 
-int slesInit(sles_data ** ppSles, int samplingRate, int frameCount, int micSource,
-             int testType, double frequency1, char* byteBufferPtr, int byteBufferLength,
-             short* loopbackTone, int maxRecordedLateCallbacks, int ignoreFirstFrames);
+int slesInit(sles_data **ppSles, int samplingRate, int frameCount, int micSource, int testType,
+             double frequency1, char *byteBufferPtr, int byteBufferLength, short *loopbackTone,
+             int maxRecordedLateCallbacks, int ignoreFirstFrames, int injectedFrequencyHz);
 
 //note the double pointer to properly free the memory of the structure
 int slesDestroy(sles_data ** ppSles);
